@@ -1,0 +1,202 @@
+{
+  "version": "1.0.0",
+  "comment": "Deterministic red-flag library. autoF forces grade=F regardless of LLM output; autoCapC caps final grade at C. section maps the penalty to a grading dimension. penalty points subtracted from that section's raw score.",
+  "rules": [
+    {
+      "id": "sells-data",
+      "label": "Sells your personal data",
+      "severity": "high",
+      "section": "dataShared",
+      "penalty": 60,
+      "autoF": true,
+      "patterns": [
+        "sell\\s+(your|personal|user)?\\s*(data|information)",
+        "sale\\s+of\\s+personal\\s+(data|information)",
+        "sell\\s+or\\s+share\\s+your\\s+personal\\s+information"
+      ]
+    },
+    {
+      "id": "third-party-sharing-broad",
+      "label": "Broad third-party sharing",
+      "severity": "high",
+      "section": "dataShared",
+      "penalty": 30,
+      "patterns": [
+        "share\\s+(your|personal)?\\s*(data|information)\\s+with\\s+(our\\s+)?(partners|affiliates|third[-\\s]parties)",
+        "disclose\\s+.{0,40}\\s+to\\s+third\\s+parties",
+        "provide\\s+.{0,30}\\s+to\\s+our\\s+partners"
+      ]
+    },
+    {
+      "id": "advertising-trackers",
+      "label": "Shares data with advertisers / trackers",
+      "severity": "high",
+      "section": "dataShared",
+      "penalty": 20,
+      "patterns": [
+        "advertising\\s+partners",
+        "ad\\s+networks",
+        "targeted\\s+advertising",
+        "interest[-\\s]based\\s+ads",
+        "cross[-\\s]site\\s+tracking"
+      ]
+    },
+    {
+      "id": "retention-indefinite",
+      "label": "Retains data indefinitely",
+      "severity": "high",
+      "section": "retention",
+      "penalty": 40,
+      "patterns": [
+        "retain\\s+.{0,30}\\s+indefinitely",
+        "for\\s+as\\s+long\\s+as\\s+necessary",
+        "for\\s+as\\s+long\\s+as\\s+we\\s+deem",
+        "no\\s+specific\\s+retention\\s+period"
+      ]
+    },
+    {
+      "id": "no-deletion-right",
+      "label": "No data deletion mechanism",
+      "severity": "high",
+      "section": "yourRights",
+      "penalty": 50,
+      "autoF": true,
+      "patterns": [
+        "we\\s+(do\\s+not|don't)\\s+(offer|provide|honor)\\s+.{0,30}\\s+deletion",
+        "cannot\\s+request\\s+deletion",
+        "deletion\\s+is\\s+not\\s+available"
+      ]
+    },
+    {
+      "id": "retroactive-changes",
+      "label": "Can change terms retroactively without notice",
+      "severity": "high",
+      "section": "clarity",
+      "penalty": 50,
+      "autoF": true,
+      "patterns": [
+        "(change|modify|amend)\\s+(these\\s+)?terms\\s+at\\s+any\\s+time\\s+without\\s+notice",
+        "without\\s+(prior\\s+)?notice\\s+to\\s+you",
+        "changes\\s+are\\s+effective\\s+immediately"
+      ]
+    },
+    {
+      "id": "unenumerated-partners",
+      "label": "Shares with unnamed \"partners\" without purpose limits",
+      "severity": "high",
+      "section": "dataShared",
+      "penalty": 30,
+      "patterns": [
+        "trusted\\s+partners",
+        "business\\s+partners\\s+(and|or)\\s+affiliates\\s+(and|or)\\s+others"
+      ]
+    },
+    {
+      "id": "no-breach-notification",
+      "label": "No data-breach notification commitment",
+      "severity": "high",
+      "section": "security",
+      "penalty": 40,
+      "autoF": true,
+      "patterns": [
+        "we\\s+are\\s+not\\s+(required|obligated)\\s+to\\s+notify",
+        "no\\s+obligation\\s+to\\s+notify\\s+you\\s+of\\s+(any\\s+)?breach"
+      ]
+    },
+    {
+      "id": "mandatory-arbitration",
+      "label": "Mandatory binding arbitration",
+      "severity": "med",
+      "section": "clarity",
+      "penalty": 20,
+      "autoCapC": true,
+      "patterns": [
+        "binding\\s+arbitration",
+        "mandatory\\s+arbitration",
+        "(any|all)\\s+disputes\\s+.{0,40}\\s+arbitration"
+      ]
+    },
+    {
+      "id": "class-action-waiver",
+      "label": "Waives your right to a class action",
+      "severity": "med",
+      "section": "clarity",
+      "penalty": 20,
+      "autoCapC": true,
+      "patterns": [
+        "class\\s+action\\s+waiver",
+        "waive\\s+.{0,20}\\s+class\\s+action",
+        "not\\s+participate\\s+in\\s+.{0,30}\\s+class\\s+action"
+      ]
+    },
+    {
+      "id": "legitimate-interest-vague",
+      "label": "Relies on vague \"legitimate interest\" without enumeration",
+      "severity": "med",
+      "section": "yourRights",
+      "penalty": 8,
+      "patterns": [
+        "legitimate\\s+(business\\s+)?interests?\\s+(include|such\\s+as|for\\s+any\\s+purpose|to\\s+the\\s+extent)"
+      ]
+    },
+    {
+      "id": "content-license-broad",
+      "label": "Broad perpetual license to your content",
+      "severity": "med",
+      "section": "yourRights",
+      "penalty": 25,
+      "patterns": [
+        "perpetual[,\\s]+irrevocable",
+        "royalty[-\\s]free[,\\s]+(worldwide|sublicensable)",
+        "worldwide,?\\s+royalty[-\\s]free"
+      ]
+    },
+    {
+      "id": "ai-training-no-optout",
+      "label": "Uses your data to train AI with no opt-out",
+      "severity": "med",
+      "section": "dataShared",
+      "penalty": 25,
+      "patterns": [
+        "train\\s+(our|artificial\\s+intelligence|machine\\s+learning|AI)\\s+models?",
+        "improve\\s+our\\s+(AI|ML|machine\\s+learning)\\s+models?"
+      ]
+    },
+    {
+      "id": "fingerprinting",
+      "label": "Device fingerprinting",
+      "severity": "med",
+      "section": "dataCollected",
+      "penalty": 20,
+      "patterns": [
+        "device\\s+fingerprint",
+        "browser\\s+fingerprint",
+        "unique\\s+device\\s+identifier"
+      ]
+    },
+    {
+      "id": "terminate-without-notice",
+      "label": "Can terminate your account without notice or reason",
+      "severity": "med",
+      "section": "clarity",
+      "penalty": 15,
+      "patterns": [
+        "terminate\\s+(your\\s+)?account\\s+at\\s+any\\s+time",
+        "without\\s+(prior\\s+)?notice\\s+or\\s+cause",
+        "for\\s+any\\s+reason\\s+or\\s+no\\s+reason"
+      ]
+    },
+    {
+      "id": "location-tracking",
+      "label": "Collects precise location",
+      "severity": "med",
+      "section": "dataCollected",
+      "penalty": 15,
+      "patterns": [
+        "precise\\s+(geo)?location",
+        "GPS\\s+coordinates",
+        "real[-\\s]time\\s+location"
+      ]
+    }
+  ]
+}

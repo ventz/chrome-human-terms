@@ -1,0 +1,6 @@
+{
+  "grade": "F",
+  "autoF": true,
+  "autoCapC": true,
+  "notes": "Synthetic worst-case policy. Should trigger multiple autoF rules: sells-data, no-deletion-right, retroactive-changes, unenumerated-partners, no-breach-notification. Also autoCapC from mandatory arbitration + class-action waiver."
+}

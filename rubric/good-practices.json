@@ -1,0 +1,126 @@
+{
+  "version": "1.0.0",
+  "comment": "Each match adds bonus points to its section (capped per section).",
+  "rules": [
+    {
+      "id": "e2e-encryption",
+      "label": "End-to-end encryption",
+      "section": "security",
+      "bonus": 25,
+      "patterns": [
+        "end[-\\s]to[-\\s]end\\s+encrypt",
+        "E2EE",
+        "client[-\\s]side\\s+encryption"
+      ]
+    },
+    {
+      "id": "defined-retention",
+      "label": "Defined retention periods",
+      "section": "retention",
+      "bonus": 20,
+      "patterns": [
+        "retain(ed)?\\s+for\\s+\\d+\\s+(days|months|years)",
+        "delete(d)?\\s+(within|after)\\s+\\d+\\s+(days|months|years)",
+        "deletion\\s+(within|after)\\s+\\d+\\s+(days|months|years)"
+      ]
+    },
+    {
+      "id": "data-portability",
+      "label": "Data export / portability available",
+      "section": "yourRights",
+      "bonus": 15,
+      "patterns": [
+        "data\\s+(export|portability)",
+        "download\\s+(a\\s+copy\\s+of\\s+)?your\\s+data",
+        "machine[-\\s]readable\\s+format"
+      ]
+    },
+    {
+      "id": "right-to-delete",
+      "label": "Right to delete / self-serve deletion",
+      "section": "yourRights",
+      "bonus": 20,
+      "patterns": [
+        "right\\s+to\\s+(erasure|deletion|be\\s+forgotten)",
+        "delete\\s+your\\s+account",
+        "account\\s+deletion"
+      ]
+    },
+    {
+      "id": "advance-change-notice",
+      "label": "Advance notice of policy changes",
+      "section": "clarity",
+      "bonus": 15,
+      "patterns": [
+        "\\d+\\s+days'?\\s+(prior\\s+)?notice",
+        "notify\\s+you\\s+(in\\s+advance|before|prior\\s+to)",
+        "(email|notify)\\s+you\\s+(at\\s+least\\s+)?\\d+\\s+days"
+      ]
+    },
+    {
+      "id": "breach-notification",
+      "label": "Commits to breach notification",
+      "section": "security",
+      "bonus": 15,
+      "patterns": [
+        "notify\\s+you\\s+of\\s+.{0,20}\\s+breach",
+        "breach\\s+notification\\s+(within|in)\\s+\\d+\\s+(hours|days)",
+        "72\\s+hours"
+      ]
+    },
+    {
+      "id": "no-sale",
+      "label": "Does not sell personal data",
+      "section": "dataShared",
+      "bonus": 25,
+      "patterns": [
+        "(do\\s+not|never|we\\s+don't)\\s+sell\\s+(your\\s+)?(personal\\s+)?(data|information)"
+      ]
+    },
+    {
+      "id": "data-minimization",
+      "label": "Commits to data minimization",
+      "section": "dataCollected",
+      "bonus": 15,
+      "patterns": [
+        "data\\s+minimi[sz]ation",
+        "only\\s+collect\\s+.{0,30}\\s+necessary",
+        "minimum\\s+necessary\\s+data"
+      ]
+    },
+    {
+      "id": "transparency-report",
+      "label": "Publishes transparency reports",
+      "section": "clarity",
+      "bonus": 10,
+      "patterns": [
+        "transparency\\s+report",
+        "warrant\\s+canary",
+        "government\\s+request\\s+report"
+      ]
+    },
+    {
+      "id": "granular-consent",
+      "label": "Granular opt-out controls",
+      "section": "yourRights",
+      "bonus": 15,
+      "patterns": [
+        "opt[-\\s]out\\s+of\\s+",
+        "granular\\s+consent",
+        "do\\s+not\\s+sell\\s+or\\s+share"
+      ]
+    },
+    {
+      "id": "audit-cert",
+      "label": "Independent security audit (SOC2 / ISO 27001)",
+      "section": "security",
+      "bonus": 10,
+      "patterns": [
+        "SOC\\s*2",
+        "ISO[\\s/]?27001",
+        "independently\\s+audited"
+      ]
+    }
+  ],
+  "sectionBonusCap": 40
+}

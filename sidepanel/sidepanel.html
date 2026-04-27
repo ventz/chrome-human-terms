@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Policy in Human Terms</title>
+  <link rel="stylesheet" href="../popup/popup.css" />
+  <link rel="stylesheet" href="sidepanel.css" />
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>Policy in Human Terms</h1>
+      <button id="settings-btn" type="button" aria-label="Open settings">
+        <span aria-hidden="true">&#9881;</span>
+      </button>
+    </header>
+
+    <main id="main">
+      <section id="state-initial" class="state" aria-label="Start analysis">
+        <p class="hint">Analyze the current page's privacy policy or terms of service.</p>
+        <div id="detection" class="detection"></div>
+        <div id="changed-banner" class="banner lowered" hidden role="alert"></div>
+        <div class="actions">
+          <button id="analyze-btn" class="primary" type="button" disabled>Analyze</button>
+          <button id="diff-btn" class="secondary" type="button" hidden>See what changed</button>
+        </div>
+        <div class="candidates" id="candidates"></div>
+      </section>
+
+      <section id="state-loading" class="state" hidden role="status" aria-live="polite">
+        <div class="loading-card">
+          <div class="spinner" aria-hidden="true"></div>
+          <h2 id="loading-msg" class="loading-title">Analyzing policy</h2>
+          <p class="loading-sub">Reading the fine print so you don't have to<span class="dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span></p>
+          <p id="loading-elapsed" class="loading-elapsed"></p>
+          <p id="loading-tip" class="loading-tip" hidden>AI analysis can take 30-120s.</p>
+          <div class="actions" style="margin-top:14px"><button id="cancel-btn" type="button" class="secondary">Cancel</button></div>
+        </div>
+      </section>
+
+      <section id="state-error" class="state" hidden role="alert">
+        <p class="error" id="error-msg"></p>
+        <div class="actions"><button id="error-back" class="secondary" type="button">Back</button></div>
+      </section>
+
+      <section id="state-diff" class="state" hidden aria-label="Policy changes since last review">
+        <h2 class="state-title">Policy changed</h2>
+        <p id="diff-summary" class="diff-summary"></p>
+        <div id="diff-changes" class="diff-changes"></div>
+        <div class="actions">
+          <button id="diff-back" class="secondary" type="button">Back</button>
+          <button id="diff-reanalyze" class="primary" type="button">Re-analyze now</button>
+        </div>
+      </section>
+
+      <section id="state-result" class="state" hidden aria-live="polite" aria-atomic="false">
+        <div class="grade-card">
+          <div id="grade-badge" class="grade-badge" role="img"></div>
+          <div class="grade-meta">
+            <p class="verdict" id="verdict"></p>
+            <p class="source-line" id="source-line"></p>
+            <p class="confidence" id="confidence"></p>
+          </div>
+        </div>
+
+        <div class="top-actions">
+          <button id="open-report-btn" class="primary" type="button">Full report &rarr;</button>
+          <button id="side-panel-btn" class="secondary" type="button" hidden>Side panel</button>
+          <button id="highlight-btn" class="secondary" type="button">Highlight on page</button>
+          <button id="refresh-btn" class="secondary" type="button">Re-analyze</button>
+        </div>
+
+        <div class="banners" id="banners"></div>
+
+        <div class="tabs" role="tablist" aria-label="Report sections">
+          <button class="tab" role="tab" aria-selected="true" aria-controls="panel-tldr" id="tab-tldr" type="button">TLDR</button>
+          <button class="tab" role="tab" aria-selected="false" aria-controls="panel-flags" id="tab-flags" type="button">Red flags <span class="tab-count" id="count-flags"></span></button>
+          <button class="tab" role="tab" aria-selected="false" aria-controls="panel-good" id="tab-good" type="button">Good practices <span class="tab-count" id="count-good"></span></button>
+          <button class="tab" role="tab" aria-selected="false" aria-controls="panel-sections" id="tab-sections" type="button">Section-by-section</button>
+          <button id="copy-btn" class="tab-copy" type="button" aria-label="Copy active tab to clipboard">Copy</button>
+          <button id="export-btn" class="tab-copy" type="button" aria-label="Export full report as markdown">Export</button>
+        </div>
+
+        <div id="panel-tldr" class="tab-panel" role="tabpanel" aria-labelledby="tab-tldr"><div id="tldr-content" class="tldr-content"></div></div>
+        <div id="panel-flags" class="tab-panel" role="tabpanel" aria-labelledby="tab-flags" hidden><ul id="red-flags" class="evidence-list"></ul></div>
+        <div id="panel-good" class="tab-panel" role="tabpanel" aria-labelledby="tab-good" hidden><ul id="good-practices" class="evidence-list"></ul></div>
+        <div id="panel-sections" class="tab-panel" role="tabpanel" aria-labelledby="tab-sections" hidden><div id="sections"></div></div>
+
+        <p class="disclaimer">Directional guidance, not legal advice. Grade is a readability / user-friendliness score.</p>
+      </section>
+    </main>
+
+    <footer><a href="#" id="view-source" hidden>View source policy</a></footer>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <script src="../popup/popup.js" type="module"></script>
+</body>
+</html>

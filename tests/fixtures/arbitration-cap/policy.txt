@@ -1,0 +1,28 @@
+TERMS OF SERVICE
+
+1. ACCOUNT
+
+You may create an account to use the service. Reasonable data minimization is
+practiced. Account deletion is available at any time via the settings page.
+Data is retained for 180 days after account closure, then deleted. We do not
+sell your personal data.
+
+2. USER CONTENT
+
+You retain ownership of your content. By submitting content, you grant us a
+license to operate the service.
+
+3. DISPUTES
+
+Any and all disputes arising out of or relating to this agreement shall be
+resolved through binding arbitration in San Francisco, California. You agree
+to a class action waiver and will not participate in any class action lawsuit
+against us. Mandatory arbitration applies to all users.
+
+4. CHANGES
+
+We will notify you 30 days' prior notice before material changes.
+
+5. SECURITY
+
+We commit to breach notification within 72 hours under GDPR.

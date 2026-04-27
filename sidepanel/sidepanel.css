@@ -1,0 +1,17 @@
+/* Side panel overrides: stretch to its container. */
+html, body {
+  width: 100% !important;
+  height: 100% !important;
+  max-height: none !important;
+}
+body {
+  width: 100% !important;
+  min-height: 100vh;
+  overflow-y: auto;
+}
+#app { padding: 16px; }
+
+/* Side panels are typically 360–500px wide; popup CSS was fixed at 520px. */
+.grade-card { padding: 14px; }
+.grade-badge { width: 72px; height: 72px; font-size: 36px; }
+.top-actions button { flex: 1 1 auto; }

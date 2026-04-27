@@ -1,0 +1,20 @@
+{
+  "version": "1.0.0",
+  "sectionWeights": {
+    "dataCollected": 20,
+    "dataShared": 25,
+    "retention": 20,
+    "yourRights": 20,
+    "security": 10,
+    "clarity": 5
+  },
+  "bands": [
+    { "grade": "A", "min": 90, "color": "#15803d", "icon": "\u2713" },
+    { "grade": "B", "min": 75, "color": "#4d7c0f", "icon": "\u2713" },
+    { "grade": "C", "min": 60, "color": "#a16207", "icon": "\u26a0" },
+    { "grade": "D", "min": 45, "color": "#c2410c", "icon": "\u26a0" },
+    { "grade": "F", "min": 0,  "color": "#b91c1c", "icon": "\u26d4" }
+  ],
+  "defaultSectionScore": 75,
+  "llmRaiseCapLetters": 1
+}

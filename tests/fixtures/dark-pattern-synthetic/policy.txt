@@ -1,0 +1,47 @@
+PRIVACY POLICY
+
+Last updated: January 1, 2026.
+
+1. INFORMATION WE COLLECT
+
+We collect everything you do on our service. This includes your personal data,
+your precise geolocation, device fingerprint identifiers, browser fingerprint,
+and every page you visit both on and off our service.
+
+2. HOW WE USE AND SHARE YOUR DATA
+
+We share your data with our trusted partners and business partners and
+affiliates. We may sell your personal information to advertising partners and
+ad networks for targeted advertising and interest-based ads. We will sell or
+share your personal information to any third party who offers us value. We use
+your data to train our AI models.
+
+3. RETENTION
+
+We retain your personal data indefinitely. There is no specific retention
+period. We may keep data for as long as we deem necessary.
+
+4. YOUR RIGHTS
+
+We do not offer data deletion. Deletion is not available for users of this
+service. You cannot request deletion of your information.
+
+5. CHANGES TO THIS POLICY
+
+We may change these terms at any time without notice. Changes are effective
+immediately upon posting.
+
+6. SECURITY
+
+We are not required to notify you in the event of a data breach. We have no
+obligation to notify you of any breach.
+
+7. DISPUTES
+
+Any disputes arising out of this policy shall be resolved through binding
+arbitration. You waive your right to participate in any class action lawsuit.
+
+8. TERMINATION
+
+We may terminate your account at any time, for any reason or no reason,
+without prior notice or cause.

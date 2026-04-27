@@ -1,0 +1,48 @@
+PRIVACY POLICY
+
+Last updated: February 2026.
+
+1. WHAT WE COLLECT
+
+We practice data minimization. We only collect the minimum necessary data to
+provide the service: your email address, encrypted account content, and
+anonymized usage metrics.
+
+2. HOW WE USE AND SHARE YOUR DATA
+
+We do not sell your personal data. Ever. We do not share your data with
+advertising partners. We use sub-processors (listed publicly) strictly to
+deliver the service.
+
+3. END-TO-END ENCRYPTION
+
+All user content is protected with end-to-end encryption. We perform
+client-side encryption so that we cannot read your content.
+
+4. RETENTION
+
+Account data is retained for 30 days after account deletion, then purged.
+Backups are deleted within 90 days. Logs are retained for 14 days.
+
+5. YOUR RIGHTS
+
+You have the right to erasure / deletion. You can delete your account from the
+settings page at any time. We support data export and portability — download a
+copy of your data in a machine-readable format in one click. We honor granular
+consent and opt-out of all non-essential processing.
+
+6. CHANGES TO THIS POLICY
+
+We will notify you at least 30 days' prior notice before any material change,
+via email and in-product notice.
+
+7. SECURITY
+
+We are independently audited annually (SOC 2 Type II, ISO 27001). We commit to
+breach notification within 72 hours of becoming aware of a breach, consistent
+with GDPR. We publish a transparency report quarterly.
+
+8. DISPUTES
+
+Disputes are resolved in court in your jurisdiction. You retain the right to
+participate in class actions.

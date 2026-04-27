@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Policy in Human Terms — Full Report</title>
+  <link rel="stylesheet" href="report.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header-inner">
+      <h1 class="site-title">Policy in Human Terms</h1>
+      <nav aria-label="Report actions">
+        <a href="#" id="view-source" class="chip" hidden>View source policy &#8599;</a>
+        <button id="print-btn" type="button" class="chip">Print / Save PDF</button>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="container">
+    <section id="empty" class="empty" hidden>
+      <h2>No report loaded</h2>
+      <p>Open the extension popup and analyze a policy first.</p>
+    </section>
+
+    <section id="report" hidden aria-label="Policy report">
+      <div class="hero">
+        <div id="grade-badge" class="grade-badge" role="img"></div>
+        <div class="hero-text">
+          <p id="doc-kind" class="doc-kind"></p>
+          <h2 id="verdict" class="verdict"></h2>
+          <p id="source-line" class="source-line"></p>
+          <p id="meta-line" class="meta-line"></p>
+        </div>
+      </div>
+
+      <div id="banners" class="banners" aria-live="polite"></div>
+
+      <section class="two-col">
+        <article aria-labelledby="redflags-h">
+          <h3 id="redflags-h">Red flags</h3>
+          <ul id="red-flags" class="evidence-list"></ul>
+        </article>
+        <article aria-labelledby="good-h">
+          <h3 id="good-h">Good practices</h3>
+          <ul id="good-practices" class="evidence-list"></ul>
+        </article>
+      </section>
+
+      <section aria-labelledby="sections-h">
+        <h3 id="sections-h">Section-by-section breakdown</h3>
+        <div id="sections" class="section-grid"></div>
+      </section>
+
+      <footer class="disclaimer" role="contentinfo">
+        Directional guidance, not legal advice. Grade is a readability / user-friendliness score.
+        Analyzed <span id="analyzed-at"></span>.
+      </footer>
+    </section>
+  </main>
+
+  <script src="report.js" type="module"></script>
+</body>
+</html>
