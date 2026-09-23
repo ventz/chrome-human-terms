@@ -1,6 +1,6 @@
 {
-  "version": "1.0.0",
-  "comment": "Deterministic red-flag library. autoF forces grade=F regardless of LLM output; autoCapC caps final grade at C. section maps the penalty to a grading dimension. penalty points subtracted from that section's raw score.",
+  "version": "1.0.2",
+  "comment": "Deterministic red-flag library. autoF forces grade=F regardless of LLM output; autoCapC caps final grade at C. section maps the penalty to a grading dimension. penalty points subtracted from that section's raw score. negationSensitive:false disables the negated-clause guard for rules whose own patterns encode the negation.",
   "rules": [
     {
       "id": "sells-data",
@@ -10,8 +10,8 @@
       "penalty": 60,
       "autoF": true,
       "patterns": [
-        "sell\\s+(your|personal|user)?\\s*(data|information)",
-        "sale\\s+of\\s+personal\\s+(data|information)",
+        "sells?\\s+(?:(?:your|our|user|users'?|customer|personal|the)\\s+){0,2}(data|information)",
+        "sale\\s+of\\s+(?:your\\s+)?personal\\s+(data|information)",
         "sell\\s+or\\s+share\\s+your\\s+personal\\s+information"
       ]
     },
@@ -22,7 +22,7 @@
       "section": "dataShared",
       "penalty": 30,
       "patterns": [
-        "share\\s+(your|personal)?\\s*(data|information)\\s+with\\s+(our\\s+)?(partners|affiliates|third[-\\s]parties)",
+        "share\\s+(?:(?:your|personal|user)\\s+){0,2}(data|information)\\s+with\\s+(our\\s+)?(partners|affiliates|third[-\\s]parties)",
         "disclose\\s+.{0,40}\\s+to\\s+third\\s+parties",
         "provide\\s+.{0,30}\\s+to\\s+our\\s+partners"
       ]
@@ -65,7 +65,8 @@
         "we\\s+(do\\s+not|don't)\\s+(offer|provide|honor)\\s+.{0,30}\\s+deletion",
         "cannot\\s+request\\s+deletion",
         "deletion\\s+is\\s+not\\s+available"
-      ]
+      ],
+      "negationSensitive": false
     },
     {
       "id": "retroactive-changes",
@@ -99,9 +100,10 @@
       "penalty": 40,
       "autoF": true,
       "patterns": [
-        "we\\s+are\\s+not\\s+(required|obligated)\\s+to\\s+notify",
-        "no\\s+obligation\\s+to\\s+notify\\s+you\\s+of\\s+(any\\s+)?breach"
-      ]
+        "(?:are|is)\\s+not\\s+(?:required|obligated)\\s+to\\s+notify\\s+you\\s+(?:of|about)\\s+(?:any\\s+)?(?:security\\s+|data\\s+)?breach",
+        "no\\s+obligation\\s+to\\s+notify\\s+you\\s+of\\s+(?:any\\s+)?breach"
+      ],
+      "negationSensitive": false
     },
     {
       "id": "mandatory-arbitration",
@@ -125,9 +127,10 @@
       "autoCapC": true,
       "patterns": [
         "class\\s+action\\s+waiver",
-        "waive\\s+.{0,20}\\s+class\\s+action",
+        "waive\\s+.{0,50}\\s+class\\s+action",
         "not\\s+participate\\s+in\\s+.{0,30}\\s+class\\s+action"
-      ]
+      ],
+      "negationSensitive": false
     },
     {
       "id": "legitimate-interest-vague",
@@ -158,7 +161,7 @@
       "section": "dataShared",
       "penalty": 25,
       "patterns": [
-        "train\\s+(our|artificial\\s+intelligence|machine\\s+learning|AI)\\s+models?",
+        "train\\s+(?:our\\s+)?(?:(?:AI|ML|artificial\\s+intelligence|machine\\s+learning)\\s+)?models?",
         "improve\\s+our\\s+(AI|ML|machine\\s+learning)\\s+models?"
       ]
     },

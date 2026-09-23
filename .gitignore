@@ -3,3 +3,16 @@ node_modules/
 *.log
 .env
 .env.*
+CLAUDE.md
+CLAUDE.local.md
+.claude/
+.mcp.json
+!.env.example
+*.pem
+*.key
+secrets/
+private/
+.private/
+sessions/
+.sessions/
+*.session

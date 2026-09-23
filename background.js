@@ -3,6 +3,7 @@
 //   - ANALYZE (fetch + rule + LLM grade)
 //   - DIFF (compare cached previous text with current text of same origin)
 //   - OPEN_REPORT (persist result + open full-tab report)
+//   - CANCEL (abort an in-flight ANALYZE / DIFF by requestId)
 //   - HIGHLIGHT_ON_PAGE (inject highlighter into the tab)
 //   - GET_LAST_REPORT, GET_ORIGIN_RECORD
 // Also owns chrome.action badge, context menus, and keyboard commands.
@@ -13,11 +14,14 @@ import {
   getCached,
   setCached,
   sha256Hex,
-  getOriginRecord,
-  setOriginRecord,
+  getDocRecord,
+  setDocRecord,
+  getLatestRecordForOrigin,
+  docKeyOf,
   originOf,
+  removeLegacyKeys,
 } from "./lib/cache.js";
-import { callDiffSummary } from "./lib/openai.js";
+import { callDiffSummary, DEFAULT_MODEL } from "./lib/openai.js";
 
 const GRADE_BADGE_COLORS = {
   A: "#15803d",
@@ -27,16 +31,24 @@ const GRADE_BADGE_COLORS = {
   F: "#b91c1c",
 };
 
-// In-memory per-tab cache of last seen text (used by the diff flow, since
-// storage.session cannot hold large policy text across SW restarts reliably).
-const tabTextCache = new Map(); // tabId -> { text, origin, hash }
+// In-flight ANALYZE / DIFF requests, so the UI can cancel them.
+const inflight = new Map(); // requestId -> AbortController
 
-// Users provide their own OpenAI API key via the extension's Options page.
+
+// Earlier builds saved the then-default model into storage on every options
+// save; treat those as "use the current default" so upgrades pick it up.
+const LEGACY_DEFAULT_MODELS = new Set(["gpt-5.4", "gpt-5.6"]);
+
+function resolveModel(stored) {
+  const m = (stored || "").trim();
+  return m && !LEGACY_DEFAULT_MODELS.has(m) ? m : DEFAULT_MODEL;
+}
+
 async function getConfig() {
   const { openaiApiKey, openaiModel } = await chrome.storage.local.get(["openaiApiKey", "openaiModel"]);
   return {
     apiKey: openaiApiKey || null,
-    model: (openaiModel && openaiModel.trim()) || "gpt-5.4",
+    model: resolveModel(openaiModel),
   };
 }
 
@@ -338,8 +350,12 @@ const highlighterFn = (payload) => {
     document.getElementById("ht-cur").textContent = String(current + 1);
     const sev = m.item.severity || (m.item.good ? "good" : "med");
     const sevLabel = sev === "high" ? "Red flag" : sev === "good" ? "Good practice" : "Concern";
-    document.getElementById("ht-info").innerHTML =
-      `<span class="ht-sev ${sev}">${sevLabel}</span>${m.item.label || ""}`;
+    // Labels may come from the model; never parse them as HTML in the page.
+    const info = document.getElementById("ht-info");
+    const badge = document.createElement("span");
+    badge.className = `ht-sev ${sev}`;
+    badge.textContent = sevLabel;
+    info.replaceChildren(badge, document.createTextNode(String(m.item.label || "")));
   }
 
   document.getElementById("ht-prev").addEventListener("click", () => goTo(current - 1));
@@ -383,27 +399,7 @@ async function highlightOnTab(tabId, items) {
   return results?.[0]?.result || { ok: false };
 }
 
-// ---------- URL safety ----------
-
-function isSafeUrl(raw) {
-  let u;
-  try { u = new URL(raw); } catch { return false; }
-  if (u.protocol !== "https:" && u.protocol !== "http:") return false;
-  const host = u.hostname.toLowerCase();
-  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) return false;
-  if (host === "169.254.169.254" || host === "metadata.google.internal") return false;
-  const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (ipv4) {
-    const [a, b] = ipv4.slice(1).map((n) => parseInt(n, 10));
-    if (a === 10 || a === 127 || a === 0) return false;
-    if (a === 169 && b === 254) return false;
-    if (a === 172 && b >= 16 && b <= 31) return false;
-    if (a === 192 && b === 168) return false;
-    if (a >= 224) return false;
-  }
-  if (/^\[?(::1|fc|fd|fe80)/i.test(host)) return false;
-  return true;
-}
+// ---------- Errors ----------
 
 function sanitizeErrorMessage(s) {
   if (!s) return "";
@@ -419,6 +415,7 @@ async function setTabBadge(tabId, grade) {
   if (!tabId) return;
   try {
     await chrome.action.setBadgeText({ tabId, text: grade || "" });
+    await chrome.action.setTitle({ tabId, title: "Policy in Human Terms" });
     if (grade) {
       await chrome.action.setBadgeBackgroundColor({ tabId, color: GRADE_BADGE_COLORS[grade] || "#475569" });
       if (chrome.action.setBadgeTextColor) {
@@ -433,7 +430,7 @@ async function setTabBadge(tabId, grade) {
 async function refreshBadgeForTab(tabId, url) {
   const origin = originOf(url);
   if (!origin) { await setTabBadge(tabId, ""); return; }
-  const rec = await getOriginRecord(origin);
+  const rec = (await getDocRecord(docKeyOf(url))) || (await getLatestRecordForOrigin(origin));
   if (rec?.grade) await setTabBadge(tabId, rec.grade);
   else await setTabBadge(tabId, "");
 }
@@ -449,12 +446,13 @@ chrome.tabs.onActivated.addListener(async ({ tabId }) => {
     if (tab?.url) refreshBadgeForTab(tabId, tab.url);
   } catch {}
 });
-chrome.tabs.onRemoved.addListener((tabId) => { tabTextCache.delete(tabId); });
 
 // ---------- Install / context menu / commands ----------
 
-chrome.runtime.onInstalled.addListener((details) => {
+chrome.runtime.onInstalled.addListener(async (details) => {
   if (details.reason === "install") chrome.runtime.openOptionsPage();
+  removeLegacyKeys().catch(() => {});
+  await chrome.contextMenus.removeAll();
   chrome.contextMenus.create({
     id: "analyze-link",
     title: "Analyze this policy link",
@@ -485,6 +483,8 @@ chrome.commands.onCommand.addListener(async (command) => {
 });
 
 // Shared one-shot flow: detect → analyze → persist → open report + badge.
+// Triggered by the keyboard shortcut and context menus, so failures surface
+// on the toolbar badge instead of being swallowed.
 async function analyzeAndShow(tabId, opts) {
   try {
     const { apiKey, model } = await getConfig();
@@ -492,60 +492,83 @@ async function analyzeAndShow(tabId, opts) {
       chrome.runtime.openOptionsPage();
       return;
     }
-    let payloadText, documentType, sourceUrl;
+    let msg;
     if (opts.fromActiveTab) {
       const info = await detectInTab(tabId);
       if (info?.isPolicy && info.pageText) {
-        payloadText = info.pageText;
-        documentType = guessDocType(info.title, info.url);
-        sourceUrl = info.url;
+        msg = { text: info.pageText, sourceUrl: info.url, documentType: guessDocType(info.title, info.url) };
       } else if (info?.candidates?.length) {
         const pick = info.candidates.find((c) => c.kind === "privacy") || info.candidates[0];
-        const { text, finalUrl } = await fetchPolicyText(pick.href);
-        payloadText = text;
-        documentType = pick.kind === "terms" ? "terms" : "privacy";
-        sourceUrl = finalUrl;
+        msg = { fetchUrl: pick.href, documentType: pick.kind === "terms" ? "terms" : "privacy" };
       } else {
-        return;
+        throw new Error("No policy page or policy link found on this page.");
       }
     } else if (opts.fetchUrl) {
-      if (!isSafeUrl(opts.fetchUrl)) return;
-      const { text, finalUrl } = await fetchPolicyText(opts.fetchUrl);
-      payloadText = text;
-      documentType = /terms|tos|eula/i.test(opts.fetchUrl) ? "terms" : "privacy";
-      sourceUrl = finalUrl;
+      msg = { fetchUrl: opts.fetchUrl, documentType: /terms|tos|eula/i.test(opts.fetchUrl) ? "terms" : "privacy" };
     } else {
       return;
     }
-    if (!payloadText || payloadText.length < 500) return;
-
-    const hash = await sha256Hex(payloadText);
-    let result = await getCached(hash);
-    if (!result || result.llmError) {
-      result = await gradePolicy({ text: payloadText, apiKey, model, documentType });
-      result.sourceUrl = sourceUrl;
-      if (!result.llmError) await setCached(hash, result);
-    }
-    await rememberOrigin(sourceUrl, result, payloadText, hash);
+    await setTabBadge(tabId, "…");
+    const { text, sourceUrl } = await resolvePolicyText(msg);
+    if (!text || text.length < 500) throw new Error("Policy text too short or could not be extracted.");
+    const { result } = await gradeOrCached({ text, sourceUrl, documentType: msg.documentType, apiKey, model });
     await setTabBadge(tabId, result.grade);
     await chrome.storage.session.set({ lastReport: result });
     await chrome.tabs.create({ url: chrome.runtime.getURL("report/report.html") });
   } catch (e) {
-    console.warn("[HumanTerms] analyzeAndShow failed:", sanitizeErrorMessage(e.message));
+    const why = sanitizeErrorMessage(e.message);
+    console.warn("[HumanTerms] analyzeAndShow failed:", why);
+    await setTabBadge(tabId, "");
+    try {
+      await chrome.action.setBadgeText({ tabId, text: "!" });
+      await chrome.action.setBadgeBackgroundColor({ tabId, color: "#475569" });
+      await chrome.action.setTitle({ tabId, title: `Policy in Human Terms — ${why}` });
+    } catch {}
   }
 }
 
-async function rememberOrigin(sourceUrl, result, text, hash) {
-  const origin = originOf(sourceUrl);
-  if (!origin) return;
-  await setOriginRecord(origin, {
+// Grade (or reuse a cached grade) and update the per-document record.
+async function gradeOrCached({ text, sourceUrl, documentType, apiKey, model, forceRefresh = false, signal }) {
+  const hash = await sha256Hex(text);
+  const docKey = docKeyOf(sourceUrl);
+  const rec = await getDocRecord(docKey);
+  const changed = rec && rec.hash && rec.hash !== hash
+    ? { previousGrade: rec.grade, previousAt: rec.analyzedAt, previousHash: rec.hash }
+    : null;
+
+  if (!forceRefresh) {
+    const cached = await getCached(hash, model);
+    if (cached && !cached.llmError) {
+      // The cache is keyed by text, so the same text may come from another URL.
+      const result = { ...cached, sourceUrl };
+      await rememberDoc(sourceUrl, result, text, hash, rec);
+      return { result, cached: true, changed };
+    }
+  }
+  const result = await gradePolicy({ text, apiKey, model, documentType, signal });
+  result.sourceUrl = sourceUrl;
+  if (!result.llmError) await setCached(hash, model, result);
+  await rememberDoc(sourceUrl, result, text, hash, rec);
+  return { result, cached: false, changed };
+}
+
+// Keep the text of the previously reviewed version when the policy changes,
+// so "See what changed" still has something to compare against.
+async function rememberDoc(sourceUrl, result, text, hash, prev) {
+  const docKey = docKeyOf(sourceUrl);
+  if (!docKey) return;
+  const sample = text.slice(0, 40_000);
+  const prevTextSample = prev && prev.hash !== hash ? prev.textSample : prev?.prevTextSample || null;
+  await setDocRecord(docKey, {
     hash,
     grade: result.grade,
     numericScore: result.numericScore,
     documentType: result.documentType,
     sourceUrl,
     analyzedAt: result.analyzedAt,
-    textSample: text.slice(0, 40_000), // for later diff
+    textSample: sample,
+    prevTextSample,
+    prevAnalyzedAt: prev && prev.hash !== hash ? prev.analyzedAt : prev?.prevAnalyzedAt || null,
   });
 }
 
@@ -558,6 +581,8 @@ function guessDocType(title, url) {
 // ---------- Message router ----------
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  // Only this extension's own pages may drive the router.
+  if (sender.id !== chrome.runtime.id || !sender.url?.startsWith(chrome.runtime.getURL(""))) return false;
   (async () => {
     try {
       if (msg.type === "DETECT") {
@@ -570,8 +595,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         let changed = null;
         if (info?.isPolicy && info.pageText) {
           const hash = await sha256Hex(info.pageText);
-          tabTextCache.set(tab.id, { text: info.pageText, origin: originOf(info.url), hash });
-          const rec = await getOriginRecord(originOf(info.url));
+          const rec = await getDocRecord(docKeyOf(info.url));
           if (rec && rec.hash && rec.hash !== hash) {
             changed = {
               previousGrade: rec.grade,
@@ -584,56 +608,58 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         return;
       }
 
+      if (msg.type === "CANCEL") {
+        inflight.get(msg.requestId)?.abort(new Error("Cancelled"));
+        inflight.delete(msg.requestId);
+        sendResponse({ ok: true });
+        return;
+      }
+
       if (msg.type === "ANALYZE") {
         const { apiKey, model } = await getConfig();
         if (!apiKey) { sendResponse({ ok: false, error: "NO_API_KEY" }); return; }
-        console.log("[HumanTerms] ANALYZE start:", msg.fetchUrl || msg.sourceUrl || "(page text)");
-        const { text, documentType, sourceUrl } = await resolvePolicyText(msg);
-        if (!text || text.length < 500) {
-          sendResponse({ ok: false, error: "Policy text too short or could not be extracted." });
-          return;
-        }
-        const hash = await sha256Hex(text);
-        // Check if the policy changed since we last saw this origin.
-        let changed = null;
-        const origin = originOf(sourceUrl);
-        if (origin) {
-          const rec = await getOriginRecord(origin);
-          if (rec && rec.hash && rec.hash !== hash) {
-            changed = { previousGrade: rec.grade, previousAt: rec.analyzedAt, previousHash: rec.hash };
-          }
-        }
-        if (!msg.forceRefresh) {
-          const cached = await getCached(hash);
-          if (cached && !cached.llmError) {
-            await rememberOrigin(sourceUrl, cached, text, hash);
-            if (msg.tabId) await setTabBadge(msg.tabId, cached.grade);
-            sendResponse({ ok: true, result: cached, cached: true, changed });
+        const ac = new AbortController();
+        if (msg.requestId) inflight.set(msg.requestId, ac);
+        try {
+          const { text, documentType, sourceUrl } = await resolvePolicyText(msg, ac.signal);
+          if (!text || text.length < 500) {
+            sendResponse({ ok: false, error: "Policy text too short or could not be extracted.", requestId: msg.requestId });
             return;
           }
+          const out = await gradeOrCached({
+            text, sourceUrl, documentType, apiKey, model, forceRefresh: !!msg.forceRefresh, signal: ac.signal,
+          });
+          if (msg.tabId) await setTabBadge(msg.tabId, out.result.grade);
+          sendResponse({ ok: true, ...out, requestId: msg.requestId });
+        } finally {
+          inflight.delete(msg.requestId);
         }
-        const result = await gradePolicy({ text, apiKey, model, documentType });
-        result.sourceUrl = sourceUrl;
-        if (!result.llmError) await setCached(hash, result);
-        await rememberOrigin(sourceUrl, result, text, hash);
-        if (msg.tabId) await setTabBadge(msg.tabId, result.grade);
-        sendResponse({ ok: true, result, cached: false, changed });
         return;
       }
 
       if (msg.type === "DIFF") {
-        // msg: { origin, currentText }
+        // msg: { sourceUrl, currentText, requestId }
         const { apiKey, model } = await getConfig();
         if (!apiKey) { sendResponse({ ok: false, error: "NO_API_KEY" }); return; }
-        const rec = await getOriginRecord(msg.origin);
-        if (!rec?.textSample) { sendResponse({ ok: false, error: "No previous text cached for diff." }); return; }
-        const summary = await callDiffSummary({
-          apiKey,
-          model,
-          previousText: rec.textSample,
-          currentText: msg.currentText,
-        });
-        sendResponse({ ok: true, diff: summary, previous: rec });
+        const rec = await getDocRecord(docKeyOf(msg.sourceUrl));
+        const currentHash = await sha256Hex(msg.currentText || "");
+        // If this version was already analyzed, compare against the one before it.
+        const previousText = rec?.hash === currentHash ? rec.prevTextSample : rec?.textSample;
+        if (!previousText) { sendResponse({ ok: false, error: "No previous version saved to compare against." }); return; }
+        const ac = new AbortController();
+        if (msg.requestId) inflight.set(msg.requestId, ac);
+        try {
+          const summary = await callDiffSummary({
+            apiKey,
+            model,
+            previousText,
+            currentText: msg.currentText,
+            signal: ac.signal,
+          });
+          sendResponse({ ok: true, diff: summary, previous: { grade: rec.grade, analyzedAt: rec.analyzedAt }, requestId: msg.requestId });
+        } finally {
+          inflight.delete(msg.requestId);
+        }
         return;
       }
 
@@ -653,6 +679,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       if (msg.type === "HIGHLIGHT") {
         const tabId = msg.tabId;
         if (!tabId) { sendResponse({ ok: false, error: "No tabId" }); return; }
+        // Only highlight on the document the result came from.
+        const tab = await chrome.tabs.get(tabId);
+        if (msg.sourceUrl && originOf(tab.url) !== originOf(msg.sourceUrl)) {
+          sendResponse({ ok: false, error: "This tab is no longer showing the analyzed policy." });
+          return;
+        }
         const res = await highlightOnTab(tabId, msg.items || []);
         sendResponse({ ok: res.ok !== false, ...res });
         return;
@@ -666,14 +698,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   return true;
 });
 
-async function resolvePolicyText(msg) {
+async function resolvePolicyText(msg, signal) {
   if (msg.text) {
     return { text: msg.text, documentType: msg.documentType || "privacy", sourceUrl: msg.sourceUrl || null };
   }
   if (msg.fetchUrl) {
-    if (!isSafeUrl(msg.fetchUrl)) throw new Error("Refusing to fetch URL (non-public host or non-http scheme).");
-    const { text, unsupported, finalUrl } = await fetchPolicyText(msg.fetchUrl);
-    if (finalUrl && !isSafeUrl(finalUrl)) throw new Error("Refusing redirect to non-public host.");
+    const { text, unsupported, finalUrl } = await fetchPolicyText(msg.fetchUrl, { signal });
     if (unsupported === "pdf") throw new Error("PDF policies are not supported yet.");
     if (unsupported === "too-short") throw new Error("Fetched page was too short to analyze.");
     return { text, documentType: msg.documentType || "privacy", sourceUrl: finalUrl };

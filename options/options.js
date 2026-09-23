@@ -1,17 +1,22 @@
-import { listCached } from "../lib/cache.js";
+import { listCached, clearAllCached } from "../lib/cache.js";
+import { DEFAULT_MODEL } from "../lib/openai.js";
 
 const $ = (id) => document.getElementById(id);
 
 async function load() {
   const { openaiApiKey, openaiModel } = await chrome.storage.local.get(["openaiApiKey", "openaiModel"]);
   if (openaiApiKey) $("apiKey").value = openaiApiKey;
-  $("model").value = openaiModel || "gpt-5.4";
+  // An empty setting means "use the extension's default", which follows
+  // upgrades; only an explicitly chosen model is stored.
+  $("model").placeholder = DEFAULT_MODEL;
+  $("model").value = openaiModel && openaiModel !== DEFAULT_MODEL ? openaiModel : "";
   renderCache();
 }
 
 async function save() {
   const apiKey = $("apiKey").value.trim();
-  const model = $("model").value.trim() || "gpt-5.4";
+  const typed = $("model").value.trim();
+  const model = typed === DEFAULT_MODEL ? "" : typed;
   if (apiKey && !apiKey.startsWith("sk-")) {
     setStatus("That doesn't look like an OpenAI key (expected sk-…).", "err");
     return;
@@ -49,10 +54,8 @@ async function renderCache() {
 }
 
 async function clearCache() {
-  const all = await chrome.storage.local.get(null);
-  const toRemove = Object.keys(all).filter((k) => k.startsWith("policy:"));
-  await chrome.storage.local.remove(toRemove);
-  setStatus(`Cleared ${toRemove.length} cached entries.`, "ok");
+  const n = await clearAllCached();
+  setStatus(`Cleared ${n} cached entries and review history.`, "ok");
   renderCache();
 }
 

@@ -1,6 +1,7 @@
 # Validation fixtures
 
-Hand-graded real policies used as a regression corpus. Every rubric change must
+Policies with expected grades, used as a regression corpus (currently all
+synthetic). Every rubric change must
 re-run the fixtures and hit:
 
 - ≥ 80% letter-grade agreement with the hand grade
@@ -19,8 +20,8 @@ Each fixture is a directory with:
 4. **dark-pattern-synthetic** — expect F (synthetic policy with explicit sell-data + no deletion)
 5. **tos-with-arbitration** — expect C cap (mandatory arbitration + class action waiver)
 
-Run (future harness):
+Run:
 
 ```bash
-node tests/run-fixtures.mjs
+node tests/run-rules.mjs
 ```

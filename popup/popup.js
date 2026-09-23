@@ -17,8 +17,8 @@ let currentResult = null;
 let activeTab = "tldr"; // tldr | flags | good | sections
 let elapsedTimer = null;
 let tipTimer = null;
-let analysisAborted = false;
-let diffOrigin = null;
+let currentRequestId = null; // in-flight ANALYZE/DIFF; responses for any other id are stale
+let diffSourceUrl = null;
 
 init();
 
@@ -40,12 +40,33 @@ async function init() {
     $(id).addEventListener("click", () => switchTab(id.replace("tab-", "")));
   }
 
+  // The side panel stays open across tab switches and navigations; re-detect
+  // so Analyze / Highlight always act on the tab the user is looking at.
+  chrome.tabs.onActivated.addListener(() => redetect());
+  chrome.tabs.onUpdated.addListener((tabId, info) => {
+    if (tabId === activeTabId && info.status === "complete") redetect();
+  });
+
+  await detect();
+}
+
+async function detect() {
   const resp = await chrome.runtime.sendMessage({ type: "DETECT" });
   if (!resp?.ok) { showError(resp?.error || "Could not inspect the page. Try reloading the tab."); return; }
   detection = resp.info;
   activeTabId = resp.tabId;
+  $("changed-banner").hidden = true;
+  $("diff-btn").hidden = true;
   if (resp.changed) showChangedBanner(resp.changed);
   renderDetection();
+}
+
+function redetect() {
+  cancelInflight();
+  currentResult = null;
+  chosenCandidate = null;
+  showState("initial");
+  detect().catch(() => {});
 }
 
 function renderDetection() {
@@ -92,19 +113,20 @@ function showChangedBanner(changed, sourceUrl) {
   b.textContent = `Policy changed since you last reviewed it (${when}, was ${changed.previousGrade}). Re-analyze or see what changed.`;
   b.hidden = false;
   // Diff only works when we have the current policy text on-page.
-  const url = sourceUrl || detection?.url;
-  try { diffOrigin = new URL(url).origin; } catch {}
+  diffSourceUrl = sourceUrl || detection?.url || null;
   $("diff-btn").hidden = !detection?.isPolicy;
 }
 
 async function onAnalyze(forceRefresh) {
   if (!chosenCandidate) return;
-  analysisAborted = false;
+  cancelInflight();
+  const requestId = crypto.randomUUID();
+  currentRequestId = requestId;
   showState("loading");
   $("loading-msg").textContent = forceRefresh ? "Re-analyzing policy" : "Analyzing policy";
   startElapsedTimer();
 
-  const payload = { type: "ANALYZE", forceRefresh: forceRefresh === true, tabId: activeTabId };
+  const payload = { type: "ANALYZE", forceRefresh: forceRefresh === true, tabId: activeTabId, requestId };
   if (chosenCandidate.source === "page") {
     payload.text = detection.pageText;
     payload.sourceUrl = detection.url;
@@ -117,13 +139,15 @@ async function onAnalyze(forceRefresh) {
   let resp;
   try { resp = await chrome.runtime.sendMessage(payload); }
   catch (e) {
+    if (currentRequestId !== requestId) return;
+    currentRequestId = null;
     stopElapsedTimer();
-    if (analysisAborted) return;
     showError(e?.message || "Extension service worker unavailable. Try reloading the extension.");
     return;
   }
+  if (currentRequestId !== requestId) return; // cancelled or superseded
+  currentRequestId = null;
   stopElapsedTimer();
-  if (analysisAborted) return;
   if (!resp?.ok) {
     if (resp?.error === "NO_API_KEY") showError("No OpenAI API key set. Click the gear icon to configure.");
     else showError(resp?.error || "Analysis failed.");
@@ -133,7 +157,14 @@ async function onAnalyze(forceRefresh) {
   renderResult(resp.result, resp.cached);
 }
 
-function onCancel() { analysisAborted = true; stopElapsedTimer(); showState("initial"); }
+function cancelInflight() {
+  if (!currentRequestId) return;
+  chrome.runtime.sendMessage({ type: "CANCEL", requestId: currentRequestId }).catch(() => {});
+  currentRequestId = null;
+  stopElapsedTimer();
+}
+
+function onCancel() { cancelInflight(); showState("initial"); }
 
 function startElapsedTimer() {
   const start = Date.now();
@@ -176,19 +207,30 @@ async function onHighlight() {
     ...(currentResult.redFlags || []).map((f) => ({ quote: f.quote, label: f.label, severity: f.severity || "med" })),
     ...(currentResult.goodPractices || []).map((g) => ({ quote: g.quote, label: g.label, good: true })),
   ];
-  const resp = await chrome.runtime.sendMessage({ type: "HIGHLIGHT", tabId: activeTabId, items });
+  const resp = await chrome.runtime.sendMessage({ type: "HIGHLIGHT", tabId: activeTabId, sourceUrl: currentResult.sourceUrl, items });
   if (resp?.ok) toast(`Highlighted ${resp.matched || 0} of ${resp.attempted || items.length} passages on the page.`);
-  else toast("Couldn't highlight (this may not be the policy page).");
+  else toast(resp?.error || "Couldn't highlight (this may not be the policy page).");
 }
 
 async function onDiff() {
-  if (!diffOrigin || !detection?.pageText) { toast("Open the policy page itself to see the diff."); return; }
+  if (!diffSourceUrl || !detection?.pageText) { toast("Open the policy page itself to see the diff."); return; }
+  cancelInflight();
+  const requestId = crypto.randomUUID();
+  currentRequestId = requestId;
   showState("loading");
   $("loading-msg").textContent = "Comparing to previous version";
   startElapsedTimer();
   let resp;
-  try { resp = await chrome.runtime.sendMessage({ type: "DIFF", origin: diffOrigin, currentText: detection.pageText }); }
-  catch (e) { stopElapsedTimer(); showError(e?.message || "Diff failed."); return; }
+  try { resp = await chrome.runtime.sendMessage({ type: "DIFF", sourceUrl: diffSourceUrl, currentText: detection.pageText, requestId }); }
+  catch (e) {
+    if (currentRequestId !== requestId) return;
+    currentRequestId = null;
+    stopElapsedTimer();
+    showError(e?.message || "Diff failed.");
+    return;
+  }
+  if (currentRequestId !== requestId) return;
+  currentRequestId = null;
   stopElapsedTimer();
   if (!resp?.ok) { showError(resp?.error || "Diff failed."); return; }
   renderDiff(resp.diff);
@@ -327,7 +369,7 @@ function renderEvidence(ul, items, kindPrefix) {
     const li = document.createElement("li");
     const cls = kindPrefix === "good" ? "good" : `sev-${item.severity || "med"}`;
     li.className = `evidence-item ${cls}`;
-    const quote = truncateQuote(item.quote, 140);
+    const quote = truncateQuote(item.quote, 300);
     li.innerHTML = `<span class="evidence-label">${escapeHtml(item.label)}</span>${quote ? `<span class="evidence-quote">${escapeHtml(quote)}</span>` : ""}`;
     ul.appendChild(li);
   }
@@ -359,11 +401,23 @@ async function onCopy() {
   }
 }
 
+// Page- and model-derived strings are untrusted: escape Markdown/HTML control
+// characters so a pasted report can't carry images, links, or raw HTML.
+function md(s) {
+  return String(s ?? "").replace(/\s+/g, " ").trim().replace(/[\\`*_{}\[\]()<>#!|~]/g, (c) => `\\${c}`);
+}
+function mdQuote(s, indent = "") {
+  return `${indent}> ${md(s)}`;
+}
+function mdUrl(u) {
+  return /^https?:\/\//.test(u || "") ? `<${String(u).replace(/[<>\s]/g, encodeURIComponent)}>` : "(n/a)";
+}
+
 function formatActiveTabAsMarkdown(r, which) {
-  const header = `# ${r.grade} — ${r.verdict || "Policy summary"}\nSource: ${r.sourceUrl || "(n/a)"}\n\n`;
+  const header = `# ${md(r.grade)} — ${md(r.verdict || "Policy summary")}\nSource: ${mdUrl(r.sourceUrl)}\n\n`;
   if (which === "tldr") {
     const docLabel = r.documentType === "terms" ? "terms of service" : r.documentType === "combined" ? "policy" : "privacy policy";
-    const lines = [`This ${docLabel} gets a **${r.grade}** (${r.numericScore}/100). ${r.verdict || ""}\n`];
+    const lines = [`This ${docLabel} gets a **${md(r.grade)}** (${md(r.numericScore)}/100). ${md(r.verdict)}\n`];
     const secs = r.sections || {};
     const GRADE_RANK = { A: 5, B: 4, C: 3, D: 2, F: 1 };
     const entries = Object.entries(secs).map(([k, v]) => ({ label: SECTION_LABELS[k] || k, grade: v.grade, rank: GRADE_RANK[v.grade] || 0 }));
@@ -372,34 +426,34 @@ function formatActiveTabAsMarkdown(r, which) {
     if (worst.length) lines.push("Weakest areas: " + worst.map((e) => `${e.label} (${e.grade})`).join(", ") + ".");
     if (best.length) lines.push("Strongest areas: " + best.map((e) => `${e.label} (${e.grade})`).join(", ") + ".");
     const flags = (r.redFlags || []).slice(0, 3);
-    if (flags.length) lines.push("\n**Watch out for:**\n" + flags.map((f) => `- ${f.label}`).join("\n"));
+    if (flags.length) lines.push("\n**Watch out for:**\n" + flags.map((f) => `- ${md(f.label)}`).join("\n"));
     const good = (r.goodPractices || []).slice(0, 3);
-    if (good.length) lines.push("\n**On the plus side:**\n" + good.map((g) => `- ${g.label}`).join("\n"));
+    if (good.length) lines.push("\n**On the plus side:**\n" + good.map((g) => `- ${md(g.label)}`).join("\n"));
     return header + `## TLDR\n${lines.join("\n")}\n`;
   }
   if (which === "flags") {
-    const items = (r.redFlags || []).map((f) => `- **${f.label}** (${f.severity || "med"})\n  > ${(f.quote || "").trim()}`).join("\n");
+    const items = (r.redFlags || []).map((f) => `- **${md(f.label)}** (${md(f.severity || "med")})\n${mdQuote(f.quote, "  ")}`).join("\n");
     return header + `## Red flags\n${items || "- None detected."}\n`;
   }
   if (which === "good") {
-    const items = (r.goodPractices || []).map((g) => `- **${g.label}**\n  > ${(g.quote || "").trim()}`).join("\n");
+    const items = (r.goodPractices || []).map((g) => `- **${md(g.label)}**\n${mdQuote(g.quote, "  ")}`).join("\n");
     return header + `## Good practices\n${items || "- None detected."}\n`;
   }
   const sections = Object.entries(r.sections || {}).map(([k, data]) => {
-    const bullets = (data.bullets || []).map((b) => `  - ${b}`).join("\n");
-    return `### ${SECTION_LABELS[k] || k} — ${data.grade}\n${bullets}`;
+    const bullets = (data.bullets || []).map((b) => `  - ${md(b)}`).join("\n");
+    return `### ${SECTION_LABELS[k] || k} — ${md(data.grade)}\n${bullets}`;
   }).join("\n\n");
   return header + `## Section-by-section\n${sections}\n`;
 }
 
 function formatFullReportMarkdown(r) {
   const lines = [];
-  lines.push(`# Policy Report: Grade ${r.grade} (${r.numericScore}/100)`);
-  lines.push(`> ${r.verdict || ""}`);
+  lines.push(`# Policy Report: Grade ${md(r.grade)} (${md(r.numericScore)}/100)`);
+  lines.push(mdQuote(r.verdict));
   lines.push("");
-  if (r.sourceUrl) lines.push(`**Source:** ${r.sourceUrl}`);
-  lines.push(`**Type:** ${r.documentType || "policy"} | **Confidence:** ${r.confidence || "unknown"} | **Analyzed:** ${r.analyzedAt || ""}`);
-  if (r.jurisdictionsClaimed?.length) lines.push(`**Jurisdictions claimed:** ${r.jurisdictionsClaimed.join(", ")}`);
+  if (r.sourceUrl) lines.push(`**Source:** ${mdUrl(r.sourceUrl)}`);
+  lines.push(`**Type:** ${md(r.documentType || "policy")} | **Confidence:** ${md(r.confidence || "unknown")} | **Analyzed:** ${md(r.analyzedAt)}`);
+  if (r.jurisdictionsClaimed?.length) lines.push(`**Jurisdictions claimed:** ${md(r.jurisdictionsClaimed.join(", "))}`);
   lines.push("");
 
   if (r.autoF) lines.push(`> **AUTO-F:** Critical clause triggers an automatic F.`);
@@ -407,7 +461,7 @@ function formatFullReportMarkdown(r) {
   lines.push("");
 
   lines.push("## TLDR");
-  lines.push(r.verdict || "");
+  lines.push(md(r.verdict));
   const tldrSecs = r.sections || {};
   const TR = { A: 5, B: 4, C: 3, D: 2, F: 1 };
   const tldrEntries = Object.entries(tldrSecs).map(([k, v]) => ({ label: SECTION_LABELS[k] || k, grade: v.grade, rank: TR[v.grade] || 0 }));
@@ -419,24 +473,24 @@ function formatFullReportMarkdown(r) {
 
   lines.push("## Red flags");
   for (const f of (r.redFlags || [])) {
-    lines.push(`- **${f.label}** (${f.severity || "med"})`);
-    if (f.quote) lines.push(`  > ${f.quote.trim()}`);
+    lines.push(`- **${md(f.label)}** (${md(f.severity || "med")})`);
+    if (f.quote) lines.push(mdQuote(f.quote, "  "));
   }
   if (!(r.redFlags || []).length) lines.push("- None detected.");
   lines.push("");
 
   lines.push("## Good practices");
   for (const g of (r.goodPractices || [])) {
-    lines.push(`- **${g.label}**`);
-    if (g.quote) lines.push(`  > ${g.quote.trim()}`);
+    lines.push(`- **${md(g.label)}**`);
+    if (g.quote) lines.push(mdQuote(g.quote, "  "));
   }
   if (!(r.goodPractices || []).length) lines.push("- None detected.");
   lines.push("");
 
   lines.push("## Section-by-section");
   for (const [k, data] of Object.entries(r.sections || {})) {
-    lines.push(`### ${SECTION_LABELS[k] || k} — ${data.grade}`);
-    for (const b of (data.bullets || [])) lines.push(`- ${b}`);
+    lines.push(`### ${SECTION_LABELS[k] || k} — ${md(data.grade)}`);
+    for (const b of (data.bullets || [])) lines.push(`- ${md(b)}`);
     lines.push("");
   }
 

@@ -58,7 +58,7 @@ function render(r) {
   const banners = $("banners");
   banners.innerHTML = "";
   if (r.autoF) addBanner(banners, "auto-f", "Auto-F: a critical clause triggers an automatic F.", true);
-  if (r.autoCapC && !r.autoF) addBanner(banners, "auto-c", "Grade capped at C due to arbitration / class-action waiver or vague legitimate-interest terms.", true);
+  if (r.autoCapC && !r.autoF) addBanner(banners, "auto-c", "Grade capped at C due to mandatory arbitration or a class-action waiver.", true);
   if (r.llmRaised) addBanner(banners, "raised", "The LLM raised the grade from the rule baseline (raise limit: one letter).");
   if (r.llmLowered) addBanner(banners, "lowered", "The LLM lowered the grade based on nuance in the text.");
   if (r.llmError) addBanner(banners, "auto-c", `LLM step failed \u2014 showing rule-based findings only.`, true);
