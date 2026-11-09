@@ -21,7 +21,8 @@ import {
   originOf,
   removeLegacyKeys,
 } from "./lib/cache.js";
-import { callDiffSummary, DEFAULT_MODEL } from "./lib/openai.js";
+import { callDiffSummary, callLinkPicker, DEFAULT_MODEL } from "./lib/openai.js";
+import { defersToFullPolicy, fullPolicyLinks, looksLikePolicyText, rankPolicyLinks } from "./lib/links.js";
 
 const GRADE_BADGE_COLORS = {
   A: "#15803d",
@@ -71,31 +72,68 @@ const detectorFn = () => {
   const bodyText = document.body?.innerText || "";
   const urlHit = KEYS.test(path) || KEYS.test(title) || KEYS.test(h1);
   const triggerCount = TRIGS.reduce((n, re) => (re.test(bodyText) ? n + 1 : n), 0);
-  const isPolicy = urlHit && triggerCount >= 3 && bodyText.length > 1500;
+  // A policy is written in sentences; a "Legal" hub that only lists the
+  // documents is a list of titles. Keep in sync with lib/links.js.
+  let main = document.body;
+  let mainLen = 0;
+  for (const el of document.querySelectorAll("main, [role=main], article")) {
+    const len = (el.innerText || "").length;
+    if (len > mainLen) { main = el; mainLen = len; }
+  }
+  const mainText = main.innerText || "";
+  const sentences = (mainText.match(/[\p{Ll}\d)\]"'\u2019\u201d][.;](?=\s|$)/gu) || []).length;
+  const isHub = urlHit && sentences < 10;
+  // A short summary article that defers to the full policy ("please refer to
+  // our privacy policy") is followed like a hub, not graded. Keep in sync
+  // with defersToFullPolicy / fullPolicyLinks in lib/links.js.
+  const DEFERS = {
+    privacy: /\b(?:refer\s+to|see|read|review|consult|check\s+out)\s+(?:our|the)\s+(?:full\s+|complete\s+)?privacy\s+(?:policy|notice|statement)\b/i,
+    terms: /\b(?:refer\s+to|see|read|review|consult|check\s+out)\s+(?:our|the)\s+(?:full\s+|complete\s+)?(?:terms\s+(?:of\s+(?:service|use)|and\s+conditions)|user\s+agreement)\b/i,
+  };
+  const FULL = {
+    privacy: /privacy[\s_-]*(?:policy|notice|statement)/i,
+    terms: /terms[\s_-]*(?:of[\s_-]*(?:service|use)|and[\s_-]*conditions)|\btos\b|user[\s_-]*agreement/i,
+  };
+  const defersTo = !urlHit || isHub || mainText.length > 12000 ? null
+    : DEFERS.privacy.test(mainText) ? "privacy" : DEFERS.terms.test(mainText) ? "terms" : null;
+  const here = location.href.split("#")[0];
+  const fullLinks = [];
+  if (defersTo) {
+    for (const a of main.querySelectorAll("a[href]")) {
+      const h = a.href.split("#")[0];
+      const t = (a.textContent || "").trim();
+      if (!/^https?:/.test(h) || h === here || fullLinks.some((c) => c.href === h)) continue;
+      if (FULL[defersTo].test(t) || FULL[defersTo].test(a.pathname)) fullLinks.push({ text: t || a.pathname, href: h, kind: defersTo });
+      if (fullLinks.length >= 4) break;
+    }
+  }
+  const isSummary = fullLinks.length > 0;
+  const isPolicy = urlHit && !isHub && !isSummary && triggerCount >= 3 && bodyText.length > 1500;
 
-  const scope =
+  const footer =
     document.querySelector("footer") ||
     document.querySelector("[role=contentinfo]") ||
     document.querySelector("#footer") ||
-    document.querySelector(".footer") ||
-    document.body;
-  const anchors = Array.from(scope.querySelectorAll("a[href]"));
-  const seen = new Set();
-  const candidates = [];
-  for (const a of anchors) {
+    document.querySelector(".footer");
+  // On a hub the documents are listed in the main content, not the footer.
+  const scopes = isHub ? [main, footer] : [footer || document.body];
+  const anchors = scopes.filter(Boolean).flatMap((el) => Array.from(el.querySelectorAll("a[href]")));
+  const seen = new Set([here, ...fullLinks.map((c) => c.href)]);
+  const candidates = [...fullLinks];
+  for (const a of isSummary ? [] : anchors) {
     const t = (a.textContent || "").trim();
     const h = a.href;
     if (!t || !h || h.startsWith("javascript:")) continue;
     if (!KEYS.test(t) && !KEYS.test(h)) continue;
-    if (seen.has(h)) continue;
-    seen.add(h);
+    if (seen.has(h.split("#")[0])) continue;
+    seen.add(h.split("#")[0]);
     let kind = "legal";
     const s = t + " " + h;
     if (/privacy/i.test(s)) kind = "privacy";
     else if (/terms|tos|eula|conditions/i.test(s)) kind = "terms";
     else if (/cookie/i.test(s)) kind = "cookies";
     candidates.push({ text: t, href: h, kind });
-    if (candidates.length >= 8) break;
+    if (candidates.length >= (isHub ? 12 : 8)) break;
   }
 
   let pageText = null;
@@ -133,7 +171,7 @@ const detectorFn = () => {
     pageText = (clone.innerText || "").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
   }
 
-  return { url: location.href, title, h1, isPolicy, triggerCount, candidates, pageText };
+  return { url: location.href, title, h1, isPolicy, isHub, isSummary, triggerCount, candidates, pageText };
 };
 
 async function detectInTab(tabId) {
@@ -498,7 +536,10 @@ async function analyzeAndShow(tabId, opts) {
       if (info?.isPolicy && info.pageText) {
         msg = { text: info.pageText, sourceUrl: info.url, documentType: guessDocType(info.title, info.url) };
       } else if (info?.candidates?.length) {
-        const pick = info.candidates.find((c) => c.kind === "privacy") || info.candidates[0];
+        const pick =
+          (await pickPolicyLink(info.candidates, "privacy", { pageUrl: info.url, apiKey, model })) ||
+          info.candidates.find((c) => c.kind === "privacy") ||
+          info.candidates[0];
         msg = { fetchUrl: pick.href, documentType: pick.kind === "terms" ? "terms" : "privacy" };
       } else {
         throw new Error("No policy page or policy link found on this page.");
@@ -509,7 +550,7 @@ async function analyzeAndShow(tabId, opts) {
       return;
     }
     await setTabBadge(tabId, "…");
-    const { text, sourceUrl } = await resolvePolicyText(msg);
+    const { text, sourceUrl } = await resolvePolicyText(msg, undefined, { apiKey, model });
     if (!text || text.length < 500) throw new Error("Policy text too short or could not be extracted.");
     const { result } = await gradeOrCached({ text, sourceUrl, documentType: msg.documentType, apiKey, model });
     await setTabBadge(tabId, result.grade);
@@ -621,7 +662,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const ac = new AbortController();
         if (msg.requestId) inflight.set(msg.requestId, ac);
         try {
-          const { text, documentType, sourceUrl } = await resolvePolicyText(msg, ac.signal);
+          const { text, documentType, sourceUrl } = await resolvePolicyText(msg, ac.signal, { apiKey, model });
           if (!text || text.length < 500) {
             sendResponse({ ok: false, error: "Policy text too short or could not be extracted.", requestId: msg.requestId });
             return;
@@ -698,17 +739,55 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   return true;
 });
 
-async function resolvePolicyText(msg, signal) {
+async function resolvePolicyText(msg, signal, llm = {}) {
   if (msg.text) {
     return { text: msg.text, documentType: msg.documentType || "privacy", sourceUrl: msg.sourceUrl || null };
   }
   if (msg.fetchUrl) {
-    const { text, unsupported, finalUrl } = await fetchPolicyText(msg.fetchUrl, { signal });
-    if (unsupported === "pdf") throw new Error("PDF policies are not supported yet.");
-    if (unsupported === "too-short") throw new Error("Fetched page was too short to analyze.");
-    return { text, documentType: msg.documentType || "privacy", sourceUrl: finalUrl };
+    const documentType = msg.documentType || "privacy";
+    let page = await fetchPolicyText(msg.fetchUrl, { signal });
+    // A "Legal" link often lands on a hub that only lists the documents, or
+    // on a summary article that defers to the full policy. Follow one hop to
+    // the real policy instead of grading the index or the summary.
+    let hopLinks = null;
+    const summary = page.unsupported !== "pdf" && looksLikePolicyText(page.text) && defersToFullPolicy(page.text, documentType);
+    if (page.unsupported !== "pdf" && !looksLikePolicyText(page.text)) hopLinks = page.links;
+    else if (summary) hopLinks = fullPolicyLinks(page.links, documentType);
+    if (hopLinks?.length) {
+      const pick = await pickPolicyLink(hopLinks, documentType, { ...llm, pageUrl: page.finalUrl, signal });
+      if (pick) {
+        const next = await fetchPolicyText(pick.href, { signal }).catch((e) => {
+          if (signal?.aborted) throw e;
+          console.warn("[HumanTerms] hub hop failed:", sanitizeErrorMessage(e.message));
+          return null;
+        });
+        // A summary is only replaced by a document that is longer and reads as a policy.
+        const better = !summary || (looksLikePolicyText(next?.text) && next.text.length > page.text.length);
+        if (next && next.unsupported !== "too-short" && better) page = next;
+      }
+    }
+    if (page.unsupported === "pdf") throw new Error("PDF policies are not supported yet.");
+    if (page.unsupported === "too-short") throw new Error("Fetched page was too short to analyze.");
+    return { text: page.text, documentType, sourceUrl: page.finalUrl };
   }
   throw new Error("No text or fetchUrl provided");
+}
+
+// Choose the main privacy policy (or terms) among a page's policy links:
+// the LLM when a key is set, else (or on failure) a keyword ranking.
+async function pickPolicyLink(links, documentType, { apiKey, model, pageUrl, signal } = {}) {
+  if (!links?.length) return null;
+  if (links.length === 1) return links[0];
+  if (apiKey) {
+    try {
+      const idx = await callLinkPicker({ apiKey, model, pageUrl, documentType, links, signal });
+      return idx >= 0 ? links[idx] : null;
+    } catch (e) {
+      if (signal?.aborted) throw e;
+      console.warn("[HumanTerms] link picker failed:", sanitizeErrorMessage(e.message));
+    }
+  }
+  return rankPolicyLinks(links, documentType);
 }
 
 // Open side panel when toolbar icon is clicked (no popup).

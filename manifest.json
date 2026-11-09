@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Policy in Human Terms",
-  "short_name": "HumanTerms",
-  "version": "1.0.2",
+  "short_name": "Human Terms",
+  "version": "1.1.0",
   "minimum_chrome_version": "114",
   "description": "Translate privacy policies and terms of service into a human-readable summary with a letter grade.",
   "action": {

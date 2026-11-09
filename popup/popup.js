@@ -79,7 +79,10 @@ function renderDetection() {
     $("analyze-btn").disabled = false;
     chosenCandidate = { source: "page" };
   } else if (detection.candidates?.length) {
-    line.innerHTML = `<span class="dot notfound" aria-hidden="true"></span>Not a policy page. Found ${detection.candidates.length} policy link${detection.candidates.length === 1 ? "" : "s"}:`;
+    const what = detection.isSummary
+      ? "This page summarizes a policy and points to the full one."
+      : detection.isHub ? "This page lists legal documents." : "Not a policy page.";
+    line.innerHTML = `<span class="dot notfound" aria-hidden="true"></span>${what} Found ${detection.candidates.length} policy link${detection.candidates.length === 1 ? "" : "s"}:`;
   } else {
     line.innerHTML = `<span class="dot notfound" aria-hidden="true"></span>No policy page or link found in this tab.`;
   }

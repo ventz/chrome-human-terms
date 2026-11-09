@@ -1,6 +1,6 @@
 {
-  "version": "1.0.2",
-  "comment": "Deterministic red-flag library. autoF forces grade=F regardless of LLM output; autoCapC caps final grade at C. section maps the penalty to a grading dimension. penalty points subtracted from that section's raw score. negationSensitive:false disables the negated-clause guard for rules whose own patterns encode the negation.",
+  "version": "1.0.3",
+  "comment": "Deterministic red-flag library. autoF forces grade=F regardless of LLM output; autoCapC caps final grade at C. section maps the penalty to a grading dimension. penalty points subtracted from that section's raw score. negationSensitive:false disables the negated-clause guard for rules whose own patterns encode the negation. exceptWhenFollowedBy: regexes checked right after a match (60 chars); a hit is skipped when one matches, so an intro to limited, legally required disclosures is not read as broad sharing. variants: the first whose `when` patterns match anywhere in the document (and no `unless` pattern does) overrides label/severity/penalty and supplies the quote.",
   "rules": [
     {
       "id": "sells-data",
@@ -25,6 +25,12 @@
         "share\\s+(?:(?:your|personal|user)\\s+){0,2}(data|information)\\s+with\\s+(our\\s+)?(partners|affiliates|third[-\\s]parties)",
         "disclose\\s+.{0,40}\\s+to\\s+third\\s+parties",
         "provide\\s+.{0,30}\\s+to\\s+our\\s+partners"
+      ],
+      "exceptWhenFollowedBy": [
+        "(?:only\\s+)?(?:under|in)\\s+(?:the\\s+)?(?:following\\s+)?(?:limited|specific|certain|exceptional)\\s+(?:circumstances|cases|situations)",
+        "(?:only\\s+)?(?:as|when|if|where)\\s+(?:required|compelled)\\s+by\\s+(?:applicable\\s+)?law",
+        "(?:only\\s+)?(?:with|upon)\\s+your\\s+(?:prior\\s+|explicit\\s+|express\\s+)?(?:consent|permission)",
+        "(?:only\\s+)?in\\s+(?:response\\s+to\\s+(?:a\\s+)?)?(?:legal|lawful)\\s+(?:process|requests?|obligations?)"
       ]
     },
     {
@@ -39,6 +45,32 @@
         "targeted\\s+advertising",
         "interest[-\\s]based\\s+ads",
         "cross[-\\s]site\\s+tracking"
+      ],
+      "variants": [
+        {
+          "label": "Shares your email with ad networks for retargeting",
+          "when": [
+            "email\\s+retargeting",
+            "custom\\s+audiences?",
+            "customer\\s+match",
+            "(?:use|upload|share|provide)\\s+(?:your\\s+)?(?:hashed\\s+)?e-?mail\\s+address(?:es)?\\s+.{0,80}\\b(?:match|target|retarget)"
+          ]
+        },
+        {
+          "label": "Uses ad networks to advertise its own service",
+          "severity": "med",
+          "penalty": 10,
+          "when": [
+            "(?:ads|advertisements|advertising)\\s+(?:for|about)\\s+(?:us|our\\s+(?:own\\s+)?(?:services?|products?|platform|website))\\b",
+            "(?:ads|advertisements|advertising)\\s+for\\s+[\\w&.-]+(?:\\s+[\\w&.-]+)?\\s+and\\s+(?:the|our)\\s+(?:services?|products?|platform)\\b",
+            "advertis\\w*\\s+(?:our|its)\\s+own\\s+(?:services?|products?|platform)"
+          ],
+          "unless": [
+            "(?:sell|rent|share|disclose|provide)\\s+.{0,40}\\b(?:to|with)\\s+(?:third[-\\s]party\\s+)?advertisers",
+            "advertisers\\s+(?:may|can)\\s+(?:target|show|reach)",
+            "for\\s+(?:their|third[-\\s]part(?:y|ies)(?:\\x27|\\u2019)?s?)\\s+own\\s+(?:advertising|marketing)\\s+purposes"
+          ]
+        }
       ]
     },
     {

@@ -10,6 +10,8 @@ severity, evidence quotes, and flagged red-flag clauses.
   (or press ⌘⇧L / Ctrl+Shift+L). No background scanning.
 - Auto-detects whether the current page IS a policy, or scrapes footer links
   to candidate Privacy/ToS/Cookie pages and lets you pick one.
+- Sees through "Legal" hub pages that only list documents: the AI picks the
+  real privacy policy or terms from the hub's links and grades that instead.
 - **Hybrid grading:** deterministic rule engine (`rubric/red-flags.json`,
   `rubric/good-practices.json`) sets the baseline. OpenAI `gpt-6-sol` via the
   Responses API structures the summary and extracts evidence quotes. The LLM
